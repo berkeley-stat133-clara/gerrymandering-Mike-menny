@@ -1,0 +1,111 @@
+---
+title: Gerrymandering Metrics
+format: typst
+---
+
+### 2024 Election Results and the 2024 District Map
+```{r}
+precinct_votes_2024 <- read.csv("gerrymandering-Mike-menny/data/g24_precinct_vote_data_cleaned.csv")
+# Aggregate precinct data to the district level
+district_votes_2024 <- b_cleaned_aggregated %>%
+  group_by(CDDIST) %>%
+  # Sum all congressional vote columns for each district
+  summarise(
+    Total_D_Votes = sum(CNGDEM01, CNGDEM02, na.rm = TRUE),
+    Total_R_Votes = sum(CNGREP01, CNGREP02, na.rm = TRUE),
+    # You could add other parties (CNGIND, etc.) if needed
+  ) %>%
+  mutate(Total_Votes = Total_D_Votes + Total_R_Votes) %>%
+  filter(Total_D_Votes > 0 & Total_R_Votes > 0)
+# Calculate wasted votes
+wasted_votes_2024 <- district_votes_2024 %>%
+  mutate(
+    Wasted_D_Votes = case_when(
+      Total_D_Votes > Total_R_Votes ~ Total_D_Votes - (0.5 * Total_Votes), # Surplus
+      Total_D_Votes < Total_R_Votes ~ Total_D_Votes                     # Lost
+    ),
+    Wasted_R_Votes = case_when(
+      Total_R_Votes > Total_D_Votes ~ Total_R_Votes - (0.5 * Total_Votes), # Surplus
+      Total_R_Votes < Total_D_Votes ~ Total_R_Votes                     # Lost
+    )
+  )
+
+# Calculate the final Efficiency Gap
+total_wasted_d <- sum(wasted_votes_2024$Wasted_D_Votes)
+total_wasted_r <- sum(wasted_votes_2024$Wasted_R_Votes)
+total_votes_all <- sum(wasted_votes_2024$Total_Votes)
+
+efficiency_gap_2024 <- (total_wasted_d - total_wasted_r) / total_votes_all
+print(paste("Efficiency Gap:", scales::percent(efficiency_gap_2024)))
+# Calculate Dem vote share in each district
+district_shares_2024 <- district_votes_2024 %>%
+  mutate(Dem_Vote_Share = Total_D_Votes / Total_Votes)
+
+# Calculate Mean vs. Median
+mean_share <- mean(district_shares_2024$Dem_Vote_Share)
+median_share <- median(district_shares_2024$Dem_Vote_Share)
+
+mean_median_2024 <- mean_share - median_share
+print(paste("Mean-Median Score:", scales::percent(mean_median_2024)))
+```
+
+
+### 2024 Election Results and the proposed 2025 District Map
+```{r}
+library(tidyverse)
+library(scales) # For the percent() function
+
+# --- Part 6: Calculate Metrics for New AB 604 Map ---
+
+# 1. Load the new district vote totals you just created in Part 5
+rerun_votes <- read.csv("gerrymandering-Mike-menny/data/g24_rerun_votes_by_ab604.csv")
+
+# 2. Prepare the data
+# Filter out D-vs-D or R-vs-R races, if any
+district_votes_ab604 <- rerun_votes %>%
+  mutate(Total_Votes = Total_D_Votes + Total_R_Votes) %>%
+  filter(Total_D_Votes > 0 & Total_R_Votes > 0)
+
+# 3. Calculate Efficiency Gap for AB 604
+wasted_votes_ab604 <- district_votes_ab604 %>%
+  mutate(
+    Wasted_D_Votes = case_when(
+      Total_D_Votes > Total_R_Votes ~ Total_D_Votes - (0.5 * Total_Votes), # Surplus
+      Total_D_Votes < Total_R_Votes ~ Total_D_Votes                     # Lost
+    ),
+    Wasted_R_Votes = case_when(
+      Total_R_Votes > Total_D_Votes ~ Total_R_Votes - (0.5 * Total_Votes), # Surplus
+      Total_R_Votes < Total_D_Votes ~ Total_R_Votes                     # Lost
+    )
+  )
+
+# Calculate the final Efficiency Gap
+total_wasted_d_ab604 <- sum(wasted_votes_ab604$Wasted_D_Votes)
+total_wasted_r_ab604 <- sum(wasted_votes_ab604$Wasted_R_Votes)
+total_votes_all_ab604 <- sum(wasted_votes_ab604$Total_Votes)
+
+efficiency_gap_ab604 <- (total_wasted_d_ab604 - total_wasted_r_ab604) / total_votes_all_ab604
+print(paste("AB 604 Map Efficiency Gap:", scales::percent(efficiency_gap_ab604)))
+
+
+# 4. Calculate Mean-Median Score for AB 604
+district_shares_ab604 <- district_votes_ab604 %>%
+  mutate(Dem_Vote_Share = Total_D_Votes / Total_Votes)
+
+# Calculate Mean vs. Median
+mean_share_ab604 <- mean(district_shares_ab604$Dem_Vote_Share)
+median_share_ab604 <- median(district_shares_ab604$Dem_Vote_Share)
+
+mean_median_ab604 <- mean_share_ab604 - median_share_ab604
+print(paste("AB 604 Map Mean-Median Score:", scales::percent(mean_median_ab604)))
+
+# 5. Calculate Seats Won
+seats_won_ab604 <- district_votes_ab604 %>%
+  summarise(
+    Dem_Seats = sum(Total_D_Votes > Total_R_Votes),
+    Rep_Seats = sum(Total_R_Votes > Total_D_Votes),
+    Total_Seats = n()
+  )
+
+print(seats_won_ab604)
+```

@@ -1,0 +1,102 @@
+---
+title: Dashboard
+format: dashboard
+---
+```{r setup, include=FALSE, cache=FALSE}
+
+# --- 1. Load Libraries ---
+library(tidyverse)
+library(sf)
+library(scales)
+
+# --- 2. Calculate 2024 Map Metrics (Part 4) ---
+precinct_votes_2024 <- read.csv("gerrymandering-Mike-menny/data/g24_precinct_vote_data_cleaned.csv")
+
+district_votes_2024 <- precinct_votes_2024 %>%
+  group_by(CDDIST) %>%
+  summarise(
+    Total_D_Votes = sum(CNGDEM01, CNGDEM02, na.rm = TRUE),
+    Total_R_Votes = sum(CNGREP01, CNGREP02, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Total_Votes = Total_D_Votes + Total_R_Votes,
+    Dem_Share = Total_D_Votes / Total_Votes,
+    Winner = if_else(Total_D_Votes > Total_R_Votes, "Democrat", "Republican")
+  ) %>%
+  filter(Total_D_Votes > 0 & Total_R_Votes > 0)
+
+wasted_votes_2024 <- district_votes_2024 %>%
+  mutate(
+    Wasted_D_Votes = case_when(
+      Total_D_Votes > Total_R_Votes ~ Total_D_Votes - (0.5 * Total_Votes),
+      Total_D_Votes < Total_R_Votes ~ Total_D_Votes
+    ),
+    Wasted_R_Votes = case_when(
+      Total_R_Votes > Total_D_Votes ~ Total_R_Votes - (0.5 * Total_Votes),
+      Total_R_Votes < Total_D_Votes ~ Total_R_Votes
+    )
+  )
+
+eg_2024 <- (sum(wasted_votes_2024$Wasted_D_Votes) - sum(wasted_votes_2024$Wasted_R_Votes)) / sum(wasted_votes_2024$Total_Votes)
+mm_2024 <- mean(district_votes_2024$Dem_Share) - median(district_votes_2024$Dem_Share)
+seats_2024 <- district_votes_2024 %>%
+  summarise(
+    Dem_Seats = sum(Total_D_Votes > Total_R_Votes),
+    Rep_Seats = sum(Total_R_Votes > Total_D_Votes)
+  )
+seats_2024_str <- paste0(seats_2024$Dem_Seats, " D / ", seats_2024$Rep_Seats, " R")
+
+
+# --- 3. Calculate AB 604 Map Metrics (Part 6) ---
+rerun_votes <- read.csv("gerrymandering-Mike-menny/data/g24_rerun_votes_by_ab604.csv")
+
+district_votes_ab604 <- rerun_votes %>%
+  mutate(
+    Total_Votes = Total_D_Votes + Total_R_Votes,
+    Dem_Share = Total_D_Votes / Total_Votes,
+    Winner = if_else(Total_D_Votes > Total_R_Votes, "Democrat", "Republican")
+  ) %>%
+  filter(Total_D_Votes > 0 & Total_R_Votes > 0)
+
+wasted_votes_ab604 <- district_votes_ab604 %>%
+  mutate(
+    Wasted_D_Votes = case_when(
+      Total_D_Votes > Total_R_Votes ~ Total_D_Votes - (0.5 * Total_Votes),
+      Total_D_Votes < Total_R_Votes ~ Total_D_Votes
+    ),
+    Wasted_R_Votes = case_when(
+      Total_R_Votes > Total_D_Votes ~ Total_R_Votes - (0.5 * Total_Votes),
+      Total_R_Votes < Total_D_Votes ~ Total_R_Votes
+    )
+  )
+
+eg_ab604 <- (sum(wasted_votes_ab604$Wasted_D_Votes) - sum(wasted_votes_ab604$Wasted_R_Votes)) / sum(wasted_votes_ab604$Total_Votes)
+mm_ab604 <- mean(district_votes_ab604$Dem_Share) - median(district_votes_ab604$Dem_Share)
+seats_ab604 <- district_votes_ab604 %>%
+  summarise(
+    Dem_Seats = sum(Total_D_Votes > Total_R_Votes),
+    Rep_Seats = sum(Total_R_Votes > Total_D_Votes)
+  )
+seats_ab604_str <- paste0(seats_ab604$Dem_Seats, " D / ", seats_ab604$Rep_Seats, " R")
+
+
+
+
+# --- 4a. 2024 Map ---
+srprec_shp <- st_read("gerrymandering-Mike-menny/data/shapefiles/srprec_state_g24_v01_shp.shp")
+
+map_2024 <- srprec_shp %>%
+  st_transform(3310) %>%
+  st_make_valid() %>%
+  group_by(CDDIST) %>%
+  summarise() %>%
+  left_join(district_votes_2024, by = "CDDIST") %>%
+  filter(!is.na(Winner))
+
+# --- 4b. AB 604 Map ---
+map_ab604 <- st_read("gerrymandering-Mike-menny/data/shapefiles/AB604.shp")
+
+map_ab604_with_votes <- map_ab604 %>%
+  st_transform(3310) %>%
+  left_join(district_votes_ab604, by = c("CONDIST" = "CONDIST")) %>%
+  filter(!is.na(Winner))
